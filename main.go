@@ -2,58 +2,22 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"flag"
-	"fmt"
 	"github.com/sirupsen/logrus"
-	"log"
 	"os"
 	"strconv"
 	"strings"
-
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	gpt3 "github.com/sashabaranov/go-openai"
+	"telegramgptbot/bot"
+	"telegramgptbot/gpt"
 )
 
 var (
 	IsDebugMode   bool
 	TelegramToken string
 	BotMembers    []int64
-	ChatGPTToken  string
-
-	gptClient *gpt3.Client
-	ctx       = context.Background()
+	ChatGPTClient *gpt.ApiClient
+	TelegramBot   *bot.TelegramBot
 )
-
-func isAllowedUser(userId int64) bool {
-	for _, i := range BotMembers {
-		if userId == i {
-			return true
-		}
-	}
-	return false
-}
-
-func sendChatRequest(text *string) (answer *string, err error) {
-	if gptClient == nil {
-		gptClient = gpt3.NewClient(ChatGPTToken)
-	}
-	resp, err := gptClient.CreateChatCompletion(
-		ctx,
-		gpt3.ChatCompletionRequest{
-			Model: gpt3.GPT3Dot5Turbo,
-			Messages: []gpt3.ChatCompletionMessage{
-				{Role: "user", Content: *text},
-			},
-		},
-	)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &resp.Choices[0].Message.Content, nil
-}
 
 func initConfig(configPath string) error {
 	file, err := os.Open(configPath)
@@ -78,8 +42,10 @@ func initConfig(configPath string) error {
 		if key == "telegram_token" {
 			TelegramToken = val
 		} else if key == "chatgpt_token" {
-			ChatGPTToken = val
-		} else if key == "telegram_admins" {
+			ChatGPTClient = &gpt.ApiClient{
+				Token: val,
+			}
+		} else if key == "bot_members" {
 			admins := strings.Split(val, ",")
 			adminList := make([]int64, 0)
 			for _, strUid := range admins {
@@ -111,41 +77,15 @@ func main() {
 	} else {
 		logrus.SetLevel(logrus.WarnLevel)
 	}
-
-	logrus.Infof("config successfully init with admins %v", BotMembers)
-	var responseText string
-	bot, err := tgbotapi.NewBotAPI(TelegramToken)
-	if err != nil {
-		log.Panic(err)
+	// configure bot
+	TelegramBot = &bot.TelegramBot{
+		Token:      TelegramToken,
+		BotMembers: BotMembers,
+		GPTClient:  ChatGPTClient,
 	}
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
-
-	// handle telegram bot messages
-	updates := bot.GetUpdatesChan(u)
-	for update := range updates {
-		if update.Message != nil {
-			log.Printf("[%s - %d] make request", update.Message.From.UserName, update.Message.From.ID)
-			// do not send to OpenAI requests with chat commands (starst with /) and non-allowed users
-			if !isAllowedUser(update.Message.From.ID) || strings.HasPrefix("/", update.Message.Text) {
-				log.Println("Skip request as invalid")
-				continue
-			}
-			response, err := sendChatRequest(&update.Message.Text)
-			if err != nil {
-				responseText = fmt.Sprint(err)
-			} else {
-				responseText = *response
-			}
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID, responseText)
-			msg.ReplyToMessageID = update.Message.MessageID
-
-			_, err = bot.Send(msg)
-			if err != nil {
-				logrus.WithError(err).Error("can't send answer")
-			}
-
-		}
+	err = TelegramBot.Handle()
+	if err != nil {
+		panic(err)
 	}
 
 }
