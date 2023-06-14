@@ -41,7 +41,7 @@ func initConfig(configPath string) error {
 		val := strings.TrimSpace(pair[1])
 		if key == "telegram_token" {
 			TelegramToken = val
-		} else if key == "chatgpt_token" {
+		} else if key == "openai_token" {
 			ChatGPTClient = &gpt.ApiClient{
 				Token: val,
 			}

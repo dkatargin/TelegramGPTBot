@@ -13,7 +13,7 @@ type ApiClient struct {
 	gptApi *openai.Client
 }
 
-func (client *ApiClient) Send(text string) (answer string, err error) {
+func (client *ApiClient) Send(text string, contextMessages []string) (answer string, err error) {
 	if client.gptApi == nil {
 		client.gptApi = gpt3.NewClient(client.Token)
 	}

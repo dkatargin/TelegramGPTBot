@@ -7,7 +7,10 @@ import (
 	"log"
 	"strings"
 	"telegramgptbot/gpt"
+	"unicode/utf8"
 )
+
+const TgMaxMessageLen = 4096
 
 type TelegramBot struct {
 	BotMembers []int64
@@ -24,6 +27,20 @@ func (settings *TelegramBot) isAllowedUser(userId int64) bool {
 	return false
 }
 
+func splitMessages(gptResponse string) []string {
+	// TODO: split code (```) correctly
+	messages := make([]string, 0)
+	var l, r int
+	for l, r = 0, TgMaxMessageLen; r < len(gptResponse); l, r = r, r+TgMaxMessageLen {
+		for !utf8.RuneStart(gptResponse[r]) {
+			r--
+		}
+		messages = append(messages, gptResponse[l:r])
+	}
+	messages = append(messages, gptResponse[l:])
+	return messages
+}
+
 func (settings *TelegramBot) Handle() error {
 	bot, err := tgbotapi.NewBotAPI(settings.Token)
 	if err != nil {
@@ -35,24 +52,30 @@ func (settings *TelegramBot) Handle() error {
 	updates := bot.GetUpdatesChan(updatesChan)
 	for update := range updates {
 		if update.Message != nil {
+			contextMessages := make([]string, 0)
 			log.Printf("[%s - %d] make request", update.Message.From.UserName, update.Message.From.ID)
 			// do not send to OpenAI requests with chat commands (starst with /) and non-allowed users
 			if !settings.isAllowedUser(update.Message.From.ID) || strings.HasPrefix("/", update.Message.Text) {
 				log.Println("Skip request as invalid")
 				continue
 			}
-			response, err := settings.GPTClient.Send(update.Message.Text)
+			// send request to GPT
+			response, err := settings.GPTClient.Send(update.Message.Text, contextMessages)
 			if err != nil {
+				logrus.WithError(err).Error("can't send request")
 				response = fmt.Sprint(err)
 			}
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID, response)
-			msg.ReplyToMessageID = update.Message.MessageID
-
-			_, err = bot.Send(msg)
-			if err != nil {
-				logrus.WithError(err).Error("can't send answer")
+			// send response to chat with user
+			replyTo := update.Message.MessageID
+			for _, m := range splitMessages(response) {
+				msg := tgbotapi.NewMessage(update.Message.Chat.ID, m)
+				msg.ReplyToMessageID = replyTo
+				newMsg, err := bot.Send(msg)
+				if err != nil {
+					logrus.WithError(err).Error("can't send answer")
+				}
+				replyTo = newMsg.MessageID
 			}
-
 		}
 	}
 	return nil
