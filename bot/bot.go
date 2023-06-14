@@ -51,22 +51,33 @@ func (settings *TelegramBot) Handle() error {
 
 	updates := bot.GetUpdatesChan(updatesChan)
 	for update := range updates {
+		var response string
 		if update.Message != nil {
-			contextMessages := make([]string, 0)
+			authorId := update.Message.From.ID
 			log.Printf("[%s - %d] make request", update.Message.From.UserName, update.Message.From.ID)
-			// do not send to OpenAI requests with chat commands (starst with /) and non-allowed users
-			if !settings.isAllowedUser(update.Message.From.ID) || strings.HasPrefix("/", update.Message.Text) {
+
+			if !settings.isAllowedUser(authorId) {
 				log.Println("Skip request as invalid")
 				continue
 			}
-			// send request to GPT
-			response, err := settings.GPTClient.Send(update.Message.Text, contextMessages)
-			if err != nil {
-				logrus.WithError(err).Error("can't send request")
-				response = fmt.Sprint(err)
-			}
-			// send response to chat with user
 			replyTo := update.Message.MessageID
+			if update.Message.Text == "/drop" {
+				gpt.DropUserContext(authorId)
+				response = "ok!"
+			} else {
+				if strings.HasPrefix("/", update.Message.Text) {
+					continue
+				}
+
+				// send request to GPT
+				response, err = settings.GPTClient.Send(update.Message.Text, authorId)
+				if err != nil {
+					logrus.WithError(err).Error("can't send request")
+					response = fmt.Sprint(err)
+				}
+				// send response to chat with user
+			}
+
 			for _, m := range splitMessages(response) {
 				msg := tgbotapi.NewMessage(update.Message.Chat.ID, m)
 				msg.ReplyToMessageID = replyTo
