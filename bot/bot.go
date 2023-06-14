@@ -4,7 +4,6 @@ import (
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/sirupsen/logrus"
-	"log"
 	"strings"
 	"telegramgptbot/gpt"
 	"unicode/utf8"
@@ -54,10 +53,10 @@ func (settings *TelegramBot) Handle() error {
 		var response string
 		if update.Message != nil {
 			authorId := update.Message.From.ID
-			log.Printf("[%s - %d] make request", update.Message.From.UserName, update.Message.From.ID)
+			logrus.Debugf("[%s - %d] make request", update.Message.From.UserName, update.Message.From.ID)
 
 			if !settings.isAllowedUser(authorId) {
-				log.Println("Skip request as invalid")
+				logrus.Debugf("Skip request as invalid")
 				continue
 			}
 			replyTo := update.Message.MessageID

@@ -6,7 +6,6 @@ import (
 	"github.com/sashabaranov/go-openai"
 	gpt3 "github.com/sashabaranov/go-openai"
 	"github.com/sirupsen/logrus"
-	"log"
 )
 
 var ctx = context.Background()
@@ -42,7 +41,6 @@ func (client *ApiClient) Send(text string, userId int64) (answer string, err err
 	if err != nil {
 		logrus.WithError(err).Error("can't store user context")
 	}
-	log.Println(userContext[userId])
 	resp, err := client.gptApi.CreateChatCompletion(
 		ctx,
 		gpt3.ChatCompletionRequest{
