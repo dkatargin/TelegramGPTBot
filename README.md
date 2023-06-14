@@ -2,8 +2,7 @@
 Super simple telegram -> OpenAI API bot
 
 ## Build
-
-`go build -o bot .`
+`CGO_ENABLED=0 go build -o bot .`
 
 ## Run
 `./bot -c config.cfg`
