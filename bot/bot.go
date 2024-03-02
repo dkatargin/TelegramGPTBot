@@ -50,32 +50,46 @@ func (settings *TelegramBot) Handle() error {
 
 	updates := bot.GetUpdatesChan(updatesChan)
 	for update := range updates {
-		var response string
-		if update.Message != nil {
-			authorId := update.Message.From.ID
-			logrus.Debugf("[%s - %d] make request", update.Message.From.UserName, update.Message.From.ID)
+		if update.Message == nil {
+			continue
+		}
 
-			if !settings.isAllowedUser(authorId) {
-				logrus.Debugf("Skip request as invalid")
-				continue
-			}
-			replyTo := update.Message.MessageID
-			if update.Message.Text == "/drop" {
-				gpt.DropUserContext(authorId)
-				response = "ok!"
-			} else {
-				if strings.HasPrefix("/", update.Message.Text) {
-					continue
-				}
+		authorId := update.Message.From.ID
+		logrus.Debugf("[%s - %d] make request", update.Message.From.UserName, update.Message.From.ID)
 
-				// send request to GPT
-				response, err = settings.GPTClient.Send(update.Message.Text, authorId)
-				if err != nil {
-					logrus.WithError(err).Error("can't send request")
-					response = fmt.Sprint(err)
-				}
-				// send response to chat with user
+		if !settings.isAllowedUser(authorId) {
+			logrus.Debugf("Skip request as invalid")
+			continue
+		}
+		replyTo := update.Message.MessageID
+		if update.Message.Text == "/drop" {
+			gpt.DropUserContext(authorId)
+			//response = "ok!"
+			continue
+		}
+		if strings.HasPrefix("/", update.Message.Text) {
+			continue
+		}
+		if strings.HasPrefix(strings.ToLower(update.Message.Text), "нарисуй") {
+			imgBytes, err := settings.GPTClient.ImageRequest(update.Message.Text, authorId)
+			if err != nil {
+				logrus.WithError(err).Error("can't send request")
 			}
+			photo := tgbotapi.FileBytes{Name: "openai_image", Bytes: imgBytes}
+			msg := tgbotapi.NewPhoto(update.Message.Chat.ID, photo)
+			msg.ReplyToMessageID = replyTo
+			_, err = bot.Send(msg)
+			if err != nil {
+				logrus.WithError(err).Error("can't send answer")
+			}
+		} else {
+			// send request to GPT
+			response, err := settings.GPTClient.TextRequest(update.Message.Text, authorId)
+			if err != nil {
+				logrus.WithError(err).Error("can't send request")
+				response = fmt.Sprint(err)
+			}
+			// send response to chat with user
 
 			for _, m := range splitMessages(response) {
 				msg := tgbotapi.NewMessage(update.Message.Chat.ID, m)
@@ -87,6 +101,7 @@ func (settings *TelegramBot) Handle() error {
 				replyTo = newMsg.MessageID
 			}
 		}
+
 	}
 	return nil
 
